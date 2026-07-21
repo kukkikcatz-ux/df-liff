@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>เข้าสู่ระบบ — DF System</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root {
+    --navy: #1e3a5f;
+    --navy-dark: #142943;
+    --green: #16a34a;
+    --green-dark: #128a3e;
+    --bg: #f3f4f6;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; font-family: 'Segoe UI', 'Sarabun', sans-serif;
+    background: var(--bg);
+    background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+    background-size: 20px 20px;
+    display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+    color: var(--text);
+  }
+  .card {
+    width: 100%; max-width: 380px; background: #fff; border-radius: 24px;
+    box-shadow: 0 10px 40px rgba(15,23,42,.08); padding: 32px 28px; text-align: center;
+  }
+  .logo-band {
+    display: flex; border-radius: 12px; overflow: hidden; margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+  .logo-band div { flex: 1; padding: 14px 0; color: #fff; font-weight: 700; font-size: 15px; letter-spacing: .5px; }
+  .logo-band .l { background: var(--navy); }
+  .logo-band .r { background: var(--green); }
+
+  .stage-icon { font-size: 44px; margin-bottom: 12px; line-height: 1; }
+  h1 { font-size: 19px; margin: 0 0 6px; color: var(--navy); }
+  p.sub { font-size: 13.5px; color: var(--muted); margin: 0 0 22px; line-height: 1.5; }
+
+  .spinner {
+    width: 34px; height: 34px; margin: 0 auto 16px;
+    border: 4px solid var(--border); border-top-color: var(--green);
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  select, button {
+    width: 100%; font-size: 15px; border-radius: 12px; padding: 13px 14px;
+    font-family: inherit;
+  }
+  select {
+    border: 1px solid var(--border); background: #fff; color: var(--text);
+    margin-bottom: 14px; appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat: no-repeat; background-position: right 14px center; background-size: 18px;
+  }
+  button {
+    border: none; font-weight: 700; cursor: pointer; transition: opacity .15s;
+  }
+  button:active { opacity: .85; }
+  .btn-primary { background: var(--green); color: #fff; }
+  .btn-primary:disabled { background: #9ca3af; cursor: default; }
+
+  .status-box { display: none; }
+  .status-box.show { display: block; }
+
+  .error-box {
+    background: #fef2f2; border: 1px solid #fecaca; color: var(--danger);
+    border-radius: 12px; padding: 14px; font-size: 13.5px; line-height: 1.5; margin-top: 8px;
+  }
+  .retry-btn { background: #fff; color: var(--navy); border: 1px solid var(--border); margin-top: 12px; font-weight: 600; }
+
+  .footnote { margin-top: 18px; font-size: 11.5px; color: #9ca3af; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo-band"><div class="l">DURO</div><div class="r">FORM</div></div>
+
+  <div id="stageLoading" class="status-box show">
+    <div class="spinner"></div>
+    <h1>กำลังตรวจสอบตัวตน...</h1>
+    <p class="sub" id="loadingDetail">เชื่อมต่อกับบัญชี LINE ของท่าน</p>
+  </div>
+
+  <div id="stagePicker" class="status-box">
+    <div class="stage-icon">👋</div>
+    <h1 id="pickerGreeting">ยินดีต้อนรับ</h1>
+    <p class="sub">เลือกชื่อของท่าน — เลือกครั้งเดียวเท่านั้น ครั้งถัดไประบบจะจำให้อัตโนมัติ</p>
+    <select id="techSelect"><option value="">-- เลือกชื่อช่าง --</option></select>
+    <button class="btn-primary" id="confirmPickBtn" disabled>ยืนยัน</button>
+  </div>
+
+  <div id="stageScan" class="status-box">
+    <div class="stage-icon">📷</div>
+    <h1>พร้อมสแกนแล้ว</h1>
+    <p class="sub">กำลังเปิดกล้อง LINE ให้สแกน QR หน้างาน...</p>
+    <div class="spinner"></div>
+  </div>
+
+  <div id="stageRedirect" class="status-box">
+    <div class="stage-icon">✅</div>
+    <h1>ยืนยันตัวตนสำเร็จ</h1>
+    <p class="sub">กำลังพาเข้าสู่ระบบ...</p>
+    <div class="spinner"></div>
+  </div>
+
+  <div id="stageError" class="status-box">
+    <div class="stage-icon">⚠️</div>
+    <h1>เปิดไม่สำเร็จ</h1>
+    <div class="error-box" id="errorDetail">-</div>
+    <button class="retry-btn" onclick="location.reload()">ลองใหม่อีกครั้ง</button>
+  </div>
+
+  <div class="footnote">DF System · เข้าสู่ระบบผ่าน LINE</div>
+</div>
+
+<script>
+  // ══════════════════════════════════════════════════════════
+  //  ตั้งค่า 2 บรรทัดนี้ให้ตรงกับของจริงก่อนใช้งาน
+  // ══════════════════════════════════════════════════════════
+  const LIFF_ID = '2010616002-UrFVlH3n';
+  const GAS_EXEC_URL = 'https://script.google.com/macros/s/AKfycbxGOZbDoN3xz7cvjtrDOk0k9Zxp9CDyldvAue8WkfhvXgmimOze2SGCmsnfn6_5EyGBaA/exec';
+  // ══════════════════════════════════════════════════════════
+
+  const $ = (id) => document.getElementById(id);
+  function showStage(id) {
+    ['stageLoading','stagePicker','stageScan','stageRedirect','stageError'].forEach(s => $(s).classList.remove('show'));
+    $(id).classList.add('show');
+  }
+  function showError(msg) {
+    $('errorDetail').textContent = msg;
+    showStage('stageError');
+  }
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const wantsScan = urlParams.get('action') === 'scanqr';
+
+  async function callApi(action, extraParams) {
+    const params = new URLSearchParams({ liffApi: '1', action });
+    if (extraParams) Object.keys(extraParams).forEach(k => params.set(k, extraParams[k]));
+    const res = await fetch(GAS_EXEC_URL + '?' + params.toString());
+    if (!res.ok) throw new Error('เชื่อมต่อระบบไม่สำเร็จ (HTTP ' + res.status + ')');
+    return res.json();
+  }
+
+  function goToGasApp(empId, empName, jobId) {
+    showStage('stageRedirect');
+    const params = new URLSearchParams({ autoLogin: 'tech', empId: empId, empName: encodeURIComponent(empName) });
+    if (jobId) params.set('jobId', jobId);
+    window.location.replace(GAS_EXEC_URL + '?' + params.toString());
+  }
+
+  async function doScanThenGo(empId, empName) {
+    showStage('stageScan');
+    try {
+      const result = await liff.scanCodeV2();
+      const scanned = result && result.value ? result.value : '';
+      if (!scanned) { showError('สแกนไม่สำเร็จ กรุณากลับไปกดปุ่ม "สแกนรับงาน" แล้วลองใหม่'); return; }
+      let jobId = '';
+      try {
+        jobId = new URL(scanned).searchParams.get('jobId') || '';
+      } catch (e) {
+        const m = scanned.match(/[?&]jobId=([^&]+)/);
+        jobId = m ? decodeURIComponent(m[1]) : '';
+      }
+      if (!jobId) { showError('QR ที่สแกนไม่ใช่ของระบบนี้ กรุณาสแกน QR ที่ติดอยู่หน้างานเท่านั้น'); return; }
+      goToGasApp(empId, empName, jobId);
+    } catch (err) {
+      showError('เปิดกล้องไม่สำเร็จ: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  function afterIdentityKnown(empId, empName) {
+    if (wantsScan) {
+      doScanThenGo(empId, empName);
+    } else {
+      goToGasApp(empId, empName, '');
+    }
+  }
+
+  async function showPicker(lineUserId, displayName) {
+    $('pickerGreeting').textContent = 'ยินดีต้อนรับ' + (displayName ? ' ' + displayName : '');
+    showStage('stagePicker');
+    try {
+      const listRes = await callApi('listTechUsers');
+      const users = (listRes && listRes.users) || [];
+      const select = $('techSelect');
+      users.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.id; opt.textContent = u.name + ' (' + u.id + ')';
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', () => { $('confirmPickBtn').disabled = !select.value; });
+      $('confirmPickBtn').addEventListener('click', async () => {
+        const chosen = users.find(u => u.id === select.value);
+        if (!chosen) return;
+        $('confirmPickBtn').disabled = true;
+        $('confirmPickBtn').textContent = 'กำลังบันทึก...';
+        try {
+          await callApi('bindTech', { lineUserId, empId: chosen.id, empName: chosen.name });
+          afterIdentityKnown(chosen.id, chosen.name);
+        } catch (err) {
+          showError('บันทึกไม่สำเร็จ: ' + (err && err.message ? err.message : err));
+        }
+      });
+    } catch (err) {
+      showError('โหลดรายชื่อช่างไม่สำเร็จ: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  async function main() {
+    if (!LIFF_ID) { showError('ยังไม่ได้ตั้งค่า LIFF_ID ในไฟล์นี้'); return; }
+    try {
+      await liff.init({ liffId: LIFF_ID });
+    } catch (err) {
+      showError('liff.init() ไม่สำเร็จ: ' + (err && err.message ? err.message : err));
+      return;
+    }
+    if (!liff.isInClient()) {
+      showError('กรุณาเปิดหน้านี้ผ่านเมนูในแอพ LINE เท่านั้นครับ (ตอนนี้เปิดจากเบราว์เซอร์ปกติ)');
+      return;
+    }
+    $('loadingDetail').textContent = 'กำลังดึงข้อมูลบัญชี LINE...';
+    let profile;
+    try {
+      profile = await liff.getProfile();
+    } catch (err) {
+      showError('ดึงข้อมูลโปรไฟล์ LINE ไม่สำเร็จ: ' + (err && err.message ? err.message : err));
+      return;
+    }
+    $('loadingDetail').textContent = 'กำลังตรวจสอบว่าเคยผูกบัญชีไว้หรือยัง...';
+    try {
+      const findRes = await callApi('findTech', { lineUserId: profile.userId });
+      if (findRes.status === 'success' && findRes.empId) {
+        afterIdentityKnown(findRes.empId, findRes.empName);
+      } else {
+        showPicker(profile.userId, profile.displayName);
+      }
+    } catch (err) {
+      showError('เชื่อมต่อระบบไม่สำเร็จ: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  main();
+</script>
+</body>
+</html>
