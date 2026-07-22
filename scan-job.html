@@ -122,7 +122,14 @@ function startScan() {
   });
 }
 
-startScan();
+// 🆕 เช็คก่อนว่าเปิดมาจากปุ่ม "สแกนรับงาน" (มี ?action=scanqr) หรือปุ่มอื่น (เช่น "งานของฉัน")
+// ถ้าไม่ใช่การสแกน ให้ redirect เข้าระบบหลักทันที ไม่ต้องเปิดกล้อง
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('action') === 'scanqr') {
+  startScan();
+} else {
+  window.location.href = GAS_URL;
+}
 </script>
 
 </body>
