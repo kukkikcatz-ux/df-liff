@@ -122,10 +122,23 @@ function startScan() {
   });
 }
 
-// 🆕 เช็คก่อนว่าเปิดมาจากปุ่ม "สแกนรับงาน" (มี ?action=scanqr) หรือปุ่มอื่น (เช่น "งานของฉัน")
-// ถ้าไม่ใช่การสแกน ให้ redirect เข้าระบบหลักทันที ไม่ต้องเปิดกล้อง
-const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.get('action') === 'scanqr') {
+// 🆕 LINE ห่อ query string ไว้ใน "liff.state" ถ้า endpoint เป็นเว็บนอก (ไม่ใช่ liff.line.me เอง)
+// ต้องแกะค่าจริงออกมาก่อนเช็ค action — ไม่งั้น action=scanqr จะไม่มีทางเจอเลย เพราะมันถูกห่ออยู่ข้างใน
+function getEffectiveParams_() {
+  const raw = new URLSearchParams(window.location.search);
+  if (raw.has('liff.state')) {
+    const state = decodeURIComponent(raw.get('liff.state'));
+    const qIndex = state.indexOf('?');
+    const qs = qIndex >= 0 ? state.slice(qIndex + 1) : state;
+    return new URLSearchParams(qs);
+  }
+  return raw;
+}
+
+// 🆕 เช็คก่อนว่าเปิดมาจากปุ่ม "สแกนรับงาน" (มี action=scanqr ไม่ว่าจะอยู่ตรงๆ หรือห่อใน liff.state)
+// หรือปุ่มอื่น (เช่น "งานของฉัน") — ถ้าไม่ใช่การสแกน ให้ redirect เข้าระบบหลักทันที ไม่ต้องเปิดกล้อง
+const effectiveParams = getEffectiveParams_();
+if (effectiveParams.get('action') === 'scanqr') {
   startScan();
 } else {
   window.location.href = GAS_URL;
