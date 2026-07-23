@@ -53,7 +53,7 @@
 </head>
 <body>
 
-<div class="card">
+<div class="card" id="mainCard" style="display:none">
   <div class="spinner" id="spinner"></div>
   <h2 id="statusTitle">กำลังเปิดกล้อง...</h2>
   <p class="sub" id="statusSub">รอสักครู่</p>
@@ -76,6 +76,7 @@ function showError(msg) {
 }
 
 function startScan() {
+  document.getElementById('mainCard').style.display = 'block';
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = 'กำลังเปิดกล้อง...';
   document.getElementById('statusSub').textContent = 'รอสักครู่';
@@ -136,7 +137,7 @@ function getEffectiveParams_() {
 }
 
 // 🆕 เช็คก่อนว่าเปิดมาจากปุ่ม "สแกนรับงาน" (มี action=scanqr ไม่ว่าจะอยู่ตรงๆ หรือห่อใน liff.state)
-// หรือปุ่มอื่น (เช่น "งานของฉัน") — ถ้าไม่ใช่การสแกน ให้ redirect เข้าระบบหลักทันที ไม่ต้องเปิดกล้อง
+// หรือปุ่มอื่น (เช่น "งานของฉัน") — ถ้าไม่ใช่การสแกน ให้ redirect เข้าระบบหลักทันที ไม่โชว์การ์ดกล้องเลย
 const effectiveParams = getEffectiveParams_();
 if (effectiveParams.get('action') === 'scanqr') {
   startScan();
