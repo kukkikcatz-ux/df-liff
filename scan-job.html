@@ -15,6 +15,8 @@
   .error { color:#e0393e; font-size:14px; margin-top:12px; }
   button { width:100%; padding:12px; font-size:15px; border-radius:8px; border:none; background:#06C755; color:#fff; font-weight:bold; margin-top:12px; cursor:pointer; }
   select, input[type="password"] { width:100%; padding:12px; font-size:15px; border-radius:8px; border:1px solid #ccc; margin-top:8px; box-sizing:border-box; }
+  .link-btn { background:transparent; color:#888; font-weight:normal; font-size:13px; text-decoration:underline; margin-top:14px; padding:4px; }
+  .link-btn:active { color:#06C755; }
 </style>
 </head>
 <body>
@@ -35,6 +37,7 @@
     <p class="sub" style="font-size:12px; margin:6px 0 0;">เข้าระบบครั้งแรก: พิมพ์รหัสผ่านที่ต้องการตั้งได้เลย ครั้งถัดไปจะใช้รหัสนี้</p>
     <button onclick="submitPassword()">ยืนยัน</button>
     <div class="error" id="passwordError" style="display:none; margin-top:8px;"></div>
+    <button type="button" class="link-btn" onclick="showPicker()">ไม่ใช่ฉัน? เลือกชื่อใหม่</button>
   </div>
 
   <div id="errorBox" style="display:none">
@@ -107,6 +110,7 @@ window.confirmBind = function() {
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = 'กำลังบันทึก...';
 
+  // 🆕 ผูกทับของเดิมได้เลย (bindTechLineUserId เช็ค lineUserId เดิมแล้วอัปเดตทับ ไม่ต้อง unbind ก่อน)
   callLiffApi('bindTechLineUserId', { lineUserId: _lineUserId, empId: empId, empName: empName }).then(function(res) {
     if (res.success) {
       askPasswordThenGo(res.empId, res.empName);
@@ -125,6 +129,7 @@ function askPasswordThenGo(empId, empName) {
   document.getElementById('statusSub').textContent = empName + ' (' + empId + ')';
   document.getElementById('passwordBox').style.display = 'block';
   document.getElementById('passwordInput').value = '';
+  document.getElementById('passwordError').style.display = 'none';
   document.getElementById('passwordInput').focus();
 }
 
