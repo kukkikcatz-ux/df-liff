@@ -3,63 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>สแกนรับงาน - Duroform</title>
+<title>เข้าสู่ระบบ - Duroform</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-  body {
-    font-family: 'Segoe UI', sans-serif;
-    background: #f4f6f8;
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-  }
-  .card {
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
-    padding: 32px 24px;
-    width: 100%;
-    max-width: 360px;
-    text-align: center;
-  }
-  h2 { color: #06C755; margin: 0 0 8px; }
-  p.sub { color: #666; font-size: 14px; margin: 0 0 20px; }
-  .spinner {
-    border: 4px solid #eee;
-    border-top: 4px solid #06C755;
-    border-radius: 50%;
-    width: 40px; height: 40px;
-    animation: spin 0.8s linear infinite;
-    margin: 0 auto 16px;
-  }
-  @keyframes spin { 100% { transform: rotate(360deg); } }
-  .error { color: #e0393e; font-size: 14px; margin-top: 12px; }
-  button {
-    width: 100%;
-    padding: 12px;
-    font-size: 15px;
-    border-radius: 8px;
-    border: none;
-    background: #06C755;
-    color: #fff;
-    font-weight: bold;
-    margin-top: 12px;
-    cursor: pointer;
-  }
+  body { font-family:'Segoe UI',sans-serif; background:#f4f6f8; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 2px 12px rgba(0,0,0,0.1); padding:32px 24px; width:100%; max-width:360px; text-align:center; }
+  h2 { color:#06C755; margin:0 0 8px; }
+  p.sub { color:#666; font-size:14px; margin:0 0 20px; }
+  .spinner { border:4px solid #eee; border-top:4px solid #06C755; border-radius:50%; width:40px; height:40px; animation:spin .8s linear infinite; margin:0 auto 16px; }
+  @keyframes spin { 100% { transform:rotate(360deg);} }
+  .error { color:#e0393e; font-size:14px; margin-top:12px; }
+  button { width:100%; padding:12px; font-size:15px; border-radius:8px; border:none; background:#06C755; color:#fff; font-weight:bold; margin-top:12px; cursor:pointer; }
+  select { width:100%; padding:12px; font-size:15px; border-radius:8px; border:1px solid #ccc; margin-top:8px; }
 </style>
 </head>
 <body>
 
 <div class="card" id="mainCard" style="display:none">
   <div class="spinner" id="spinner"></div>
-  <h2 id="statusTitle">กำลังเปิดกล้อง...</h2>
+  <h2 id="statusTitle">กำลังเข้าสู่ระบบ...</h2>
   <p class="sub" id="statusSub">รอสักครู่</p>
+
+  <div id="pickerBox" style="display:none; text-align:left;">
+    <p class="sub" style="text-align:center; margin-bottom:4px;">กรุณาเลือกชื่อของท่าน</p>
+    <select id="techSelect"></select>
+    <button onclick="confirmBind()">ยืนยัน</button>
+  </div>
+
   <div id="errorBox" style="display:none">
     <div class="error" id="errorMsg"></div>
-    <button onclick="startScan()">ลองสแกนอีกครั้ง</button>
+    <button onclick="location.reload()">ลองใหม่อีกครั้ง</button>
   </div>
 </div>
 
@@ -67,16 +40,90 @@
 const LIFF_ID = '2010616002-UrFVlH3n';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxGOZbDoN3xz7cvjtrDOk0k9Zxp9CDyldvAue8WkfhvXgmimOze2SGCmsnfn6_5EyGBaA/exec';
 
+function showCard() { document.getElementById('mainCard').style.display = 'block'; }
+
 function showError(msg) {
   document.getElementById('spinner').style.display = 'none';
+  document.getElementById('pickerBox').style.display = 'none';
   document.getElementById('statusTitle').textContent = 'ไม่สำเร็จ';
   document.getElementById('statusSub').textContent = '';
   document.getElementById('errorBox').style.display = 'block';
   document.getElementById('errorMsg').textContent = msg;
 }
 
+function callLiffApi(action, params) {
+  const qs = Object.keys(params||{}).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+  const url = GAS_URL + '?liffApi=1&action=' + encodeURIComponent(action) + (qs ? '&' + qs : '');
+  return fetch(url).then(r => r.json());
+}
+
+let _lineUserId = '';
+let _lineDisplayName = '';
+
+function showPicker() {
+  document.getElementById('spinner').style.display = 'none';
+  document.getElementById('statusTitle').textContent = 'ยินดีต้อนรับ' + (_lineDisplayName ? ' ' + _lineDisplayName : '');
+  document.getElementById('statusSub').textContent = 'เลือกครั้งเดียว ครั้งถัดไปจำให้อัตโนมัติ';
+  document.getElementById('pickerBox').style.display = 'block';
+
+  callLiffApi('listTechUsersForBinding', {}).then(function(res) {
+    const sel = document.getElementById('techSelect');
+    sel.innerHTML = '<option value="">-- เลือกชื่อช่าง --</option>' +
+      (res.techs || []).map(t => `<option value="${t.empId}">${t.empName} (${t.empId})</option>`).join('');
+  }).catch(function() {
+    showError('โหลดรายชื่อไม่สำเร็จ ลองใหม่อีกครั้งครับ');
+  });
+}
+
+window.confirmBind = function() {
+  const sel = document.getElementById('techSelect');
+  const empId = sel.value;
+  if (!empId) { alert('กรุณาเลือกชื่อก่อนครับ'); return; }
+  const empName = sel.options[sel.selectedIndex].text.replace(/\s*\([^)]*\)\s*$/, '');
+  document.getElementById('pickerBox').style.display = 'none';
+  document.getElementById('spinner').style.display = 'block';
+  document.getElementById('statusTitle').textContent = 'กำลังบันทึก...';
+
+  callLiffApi('bindTechLineUserId', { lineUserId: _lineUserId, empId: empId, empName: empName }).then(function(res) {
+    if (res.success) {
+      goToApp(res.empId, res.empName);
+    } else {
+      showError(res.message || 'บันทึกไม่สำเร็จ ลองใหม่อีกครั้งครับ');
+    }
+  }).catch(function() { showError('บันทึกไม่สำเร็จ ลองใหม่อีกครั้งครับ'); });
+};
+
+function goToApp(empId, empName) {
+  document.getElementById('statusTitle').textContent = 'สำเร็จ';
+  document.getElementById('statusSub').textContent = 'กำลังเข้าสู่ระบบ...';
+  window.location.href = GAS_URL + '?autoLogin=tech&empId=' + encodeURIComponent(empId) + '&empName=' + encodeURIComponent(empName);
+}
+
+// 🆕 flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE ที่นี่ทั้งหมด (นอก iframe ของ GAS)
+// แล้วส่ง empId/empName เข้า GAS ตรงๆ ทาง URL เพื่อไม่ต้องเรียก liff.init() ในหน้า GAS อีกเลย
+function startDefaultFlow() {
+  showCard();
+  liff.init({ liffId: LIFF_ID }).then(function() {
+    if (!liff.isInClient()) {
+      window.location.href = GAS_URL; // เปิดผ่าน browser ปกติ ไม่ใช่แอพ LINE — ให้ล็อกอินเองแบบปกติ
+      return;
+    }
+    liff.getProfile().then(function(profile) {
+      _lineUserId = profile.userId;
+      _lineDisplayName = profile.displayName;
+      callLiffApi('findTechByLineUserId', { lineUserId: profile.userId }).then(function(res) {
+        if (res.found) {
+          goToApp(res.empId, res.empName);
+        } else {
+          showPicker();
+        }
+      }).catch(function() { showError('เชื่อมต่อระบบไม่สำเร็จ ลองใหม่อีกครั้งครับ'); });
+    }).catch(function() { showError('ดึงข้อมูลโปรไฟล์ LINE ไม่สำเร็จ'); });
+  }).catch(function() { showError('เชื่อมต่อ LINE ไม่สำเร็จ ลองเปิดใหม่อีกครั้งครับ'); });
+}
+
 function startScan() {
-  document.getElementById('mainCard').style.display = 'block';
+  showCard();
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = 'กำลังเปิดกล้อง...';
   document.getElementById('statusSub').textContent = 'รอสักครู่';
@@ -123,8 +170,6 @@ function startScan() {
   });
 }
 
-// 🆕 LINE ห่อ query string ไว้ใน "liff.state" ถ้า endpoint เป็นเว็บนอก (ไม่ใช่ liff.line.me เอง)
-// ต้องแกะค่าจริงออกมาก่อนเช็ค action — ไม่งั้น action=scanqr จะไม่มีทางเจอเลย เพราะมันถูกห่ออยู่ข้างใน
 function getEffectiveParams_() {
   const raw = new URLSearchParams(window.location.search);
   if (raw.has('liff.state')) {
@@ -136,13 +181,11 @@ function getEffectiveParams_() {
   return raw;
 }
 
-// 🆕 เช็คก่อนว่าเปิดมาจากปุ่ม "สแกนรับงาน" (มี action=scanqr ไม่ว่าจะอยู่ตรงๆ หรือห่อใน liff.state)
-// หรือปุ่มอื่น (เช่น "งานของฉัน") — ถ้าไม่ใช่การสแกน ให้ redirect เข้าระบบหลักทันที ไม่โชว์การ์ดกล้องเลย
 const effectiveParams = getEffectiveParams_();
 if (effectiveParams.get('action') === 'scanqr') {
   startScan();
 } else {
-  window.location.href = GAS_URL;
+  startDefaultFlow();
 }
 </script>
 
