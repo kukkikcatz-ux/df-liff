@@ -17,6 +17,9 @@
   select, input[type="password"] { width:100%; padding:12px; font-size:15px; border-radius:8px; border:1px solid #ccc; margin-top:8px; box-sizing:border-box; }
   .link-btn { background:transparent; color:#888; font-weight:normal; font-size:13px; text-decoration:underline; margin-top:14px; padding:4px; }
   .link-btn:active { color:#06C755; }
+  .remember-row { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px; }
+  .remember-row input[type="checkbox"] { width:16px; height:16px; margin:0; accent-color:#06C755; }
+  .remember-row label { font-size:13px; color:#555; user-select:none; }
 </style>
 </head>
 <body>
@@ -35,6 +38,10 @@
   <div id="passwordBox" style="display:none; text-align:left;">
     <input type="password" id="passwordInput" placeholder="รหัสผ่าน / PIN">
     <p class="sub" style="font-size:12px; margin:6px 0 0;">เข้าระบบครั้งแรก: พิมพ์รหัสผ่านที่ต้องการตั้งได้เลย ครั้งถัดไปจะใช้รหัสนี้</p>
+    <div class="remember-row">
+      <input type="checkbox" id="rememberAuthCheckbox" checked>
+      <label for="rememberAuthCheckbox">จดจำการเข้าสู่ระบบ (ไม่ต้องใส่รหัสผ่านอีกในเครื่องนี้)</label>
+    </div>
     <button onclick="submitPassword()">ยืนยัน</button>
     <div class="error" id="passwordError" style="display:none; margin-top:8px;"></div>
     <button type="button" class="link-btn" onclick="showPicker()">ไม่ใช่ฉัน? เลือกชื่อใหม่</button>
@@ -77,6 +84,18 @@ function callLiffApi(action, params) {
   const qs = Object.keys(params||{}).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
   const url = GAS_URL + '?liffApi=1&action=' + encodeURIComponent(action) + (qs ? '&' + qs : '');
   return fetch(url).then(r => r.json());
+}
+
+// 🆕 "จดจำการเข้าสู่ระบบ" — เก็บไว้ใน localStorage ของหน้านี้เอง (โดเมน GitHub Pages)
+// สโคปตาม empId เผื่อมีคนอื่นมาเลือกชื่อใหม่บนเครื่องเดียวกันภายหลัง จะได้ไม่ข้ามรหัสผ่านให้คนอื่นผิดๆ
+function isAuthRemembered_(empId) {
+  try { return localStorage.getItem('DF_SKIP_PW_' + empId) === '1'; } catch(e) { return false; }
+}
+function rememberAuth_(empId) {
+  try { localStorage.setItem('DF_SKIP_PW_' + empId, '1'); } catch(e) {}
+}
+function forgetAuth_(empId) {
+  try { localStorage.removeItem('DF_SKIP_PW_' + empId); } catch(e) {}
 }
 
 let _lineUserId = '';
@@ -129,6 +148,7 @@ function askPasswordThenGo(empId, empName) {
   document.getElementById('statusSub').textContent = empName + ' (' + empId + ')';
   document.getElementById('passwordBox').style.display = 'block';
   document.getElementById('passwordInput').value = '';
+  document.getElementById('rememberAuthCheckbox').checked = true;
   document.getElementById('passwordError').style.display = 'none';
   document.getElementById('passwordInput').focus();
 }
@@ -137,6 +157,7 @@ window.submitPassword = async function() {
   const pw = document.getElementById('passwordInput').value;
   if (!pw) { showPasswordError('กรุณาใส่รหัสผ่านก่อนครับ'); return; }
   const hashed = await hashPassword(pw, _pendingEmpId);
+  const remember = document.getElementById('rememberAuthCheckbox').checked;
 
   document.getElementById('passwordBox').style.display = 'none';
   document.getElementById('spinner').style.display = 'block';
@@ -145,6 +166,8 @@ window.submitPassword = async function() {
 
   callLiffApi('verifyTechPassword', { empId: _pendingEmpId, hashedPassword: hashed }).then(function(res) {
     if (res.success) {
+      // 🆕 ติ๊ก "จดจำ" ไว้ → บันทึกลง localStorage ครั้งถัดไปข้ามขั้นรหัสผ่านได้เลย
+      if (remember) rememberAuth_(_pendingEmpId); else forgetAuth_(_pendingEmpId);
       goToApp(_pendingEmpId, _pendingEmpName);
     } else {
       askPasswordThenGo(_pendingEmpId, _pendingEmpName);
@@ -172,7 +195,7 @@ function goToApp(empId, empName) {
   window.location.href = GAS_URL + '?autoLogin=tech&empId=' + encodeURIComponent(empId) + '&empName=' + encodeURIComponent(empName);
 }
 
-// 🆕 flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE แล้วตามด้วยรหัสผ่านเสมอ
+// 🆕 flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE แล้วถามรหัสผ่าน (ข้ามได้ถ้าเคยติ๊ก "จดจำ" ไว้)
 function startDefaultFlow() {
   showCard();
   liff.init({ liffId: LIFF_ID }).then(function() {
@@ -185,7 +208,12 @@ function startDefaultFlow() {
       _lineDisplayName = profile.displayName;
       callLiffApi('findTechByLineUserId', { lineUserId: profile.userId }).then(function(res) {
         if (res.found) {
-          askPasswordThenGo(res.empId, res.empName);
+          // 🆕 เคยติ๊ก "จดจำ" ไว้แล้ว → ข้ามขั้นรหัสผ่านไปเข้าระบบเลย
+          if (isAuthRemembered_(res.empId)) {
+            goToApp(res.empId, res.empName);
+          } else {
+            askPasswordThenGo(res.empId, res.empName);
+          }
         } else {
           showPicker();
         }
