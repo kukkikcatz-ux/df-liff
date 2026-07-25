@@ -14,7 +14,7 @@
   @keyframes spin { 100% { transform:rotate(360deg);} }
   .error { color:#e0393e; font-size:14px; margin-top:12px; }
   button { width:100%; padding:12px; font-size:15px; border-radius:8px; border:none; background:#06C755; color:#fff; font-weight:bold; margin-top:12px; cursor:pointer; }
-  select { width:100%; padding:12px; font-size:15px; border-radius:8px; border:1px solid #ccc; margin-top:8px; }
+  select, input[type="password"] { width:100%; padding:12px; font-size:15px; border-radius:8px; border:1px solid #ccc; margin-top:8px; box-sizing:border-box; }
 </style>
 </head>
 <body>
@@ -30,6 +30,13 @@
     <button onclick="confirmBind()">ยืนยัน</button>
   </div>
 
+  <div id="passwordBox" style="display:none; text-align:left;">
+    <input type="password" id="passwordInput" placeholder="รหัสผ่าน / PIN">
+    <p class="sub" style="font-size:12px; margin:6px 0 0;">เข้าระบบครั้งแรก: พิมพ์รหัสผ่านที่ต้องการตั้งได้เลย ครั้งถัดไปจะใช้รหัสนี้</p>
+    <button onclick="submitPassword()">ยืนยัน</button>
+    <div class="error" id="passwordError" style="display:none; margin-top:8px;"></div>
+  </div>
+
   <div id="errorBox" style="display:none">
     <div class="error" id="errorMsg"></div>
     <button onclick="location.reload()">ลองใหม่อีกครั้ง</button>
@@ -42,13 +49,25 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbxGOZbDoN3xz7cvjtrDOk0k
 
 function showCard() { document.getElementById('mainCard').style.display = 'block'; }
 
-function showError(msg) {
-  document.getElementById('spinner').style.display = 'none';
+function hideAllBoxes() {
   document.getElementById('pickerBox').style.display = 'none';
+  document.getElementById('passwordBox').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+}
+
+function showError(msg) {
+  hideAllBoxes();
+  document.getElementById('spinner').style.display = 'none';
   document.getElementById('statusTitle').textContent = 'ไม่สำเร็จ';
   document.getElementById('statusSub').textContent = '';
   document.getElementById('errorBox').style.display = 'block';
   document.getElementById('errorMsg').textContent = msg;
+}
+
+async function hashPassword(password, saltId) {
+  const data = new TextEncoder().encode(password + '|' + (saltId || '').toUpperCase());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 function callLiffApi(action, params) {
@@ -59,8 +78,11 @@ function callLiffApi(action, params) {
 
 let _lineUserId = '';
 let _lineDisplayName = '';
+let _pendingEmpId = '';
+let _pendingEmpName = '';
 
 function showPicker() {
+  hideAllBoxes();
   document.getElementById('spinner').style.display = 'none';
   document.getElementById('statusTitle').textContent = 'ยินดีต้อนรับ' + (_lineDisplayName ? ' ' + _lineDisplayName : '');
   document.getElementById('statusSub').textContent = 'เลือกครั้งเดียว ครั้งถัดไปจำให้อัตโนมัติ';
@@ -80,32 +102,77 @@ window.confirmBind = function() {
   const empId = sel.value;
   if (!empId) { alert('กรุณาเลือกชื่อก่อนครับ'); return; }
   const empName = sel.options[sel.selectedIndex].text.replace(/\s*\([^)]*\)\s*$/, '');
-  document.getElementById('pickerBox').style.display = 'none';
+
+  hideAllBoxes();
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = 'กำลังบันทึก...';
 
   callLiffApi('bindTechLineUserId', { lineUserId: _lineUserId, empId: empId, empName: empName }).then(function(res) {
     if (res.success) {
-      goToApp(res.empId, res.empName);
+      askPasswordThenGo(res.empId, res.empName);
     } else {
       showError(res.message || 'บันทึกไม่สำเร็จ ลองใหม่อีกครั้งครับ');
     }
   }).catch(function() { showError('บันทึกไม่สำเร็จ ลองใหม่อีกครั้งครับ'); });
 };
 
+// 🆕 ขั้นยืนยันรหัสผ่าน — ชั้นความปลอดภัยเพิ่มจาก LINE binding (กันคนอื่นมือถือหลุด/แชร์กันแล้วเห็นงานคนอื่น)
+function askPasswordThenGo(empId, empName) {
+  _pendingEmpId = empId; _pendingEmpName = empName;
+  hideAllBoxes();
+  document.getElementById('spinner').style.display = 'none';
+  document.getElementById('statusTitle').textContent = 'ยืนยันตัวตน';
+  document.getElementById('statusSub').textContent = empName + ' (' + empId + ')';
+  document.getElementById('passwordBox').style.display = 'block';
+  document.getElementById('passwordInput').value = '';
+  document.getElementById('passwordInput').focus();
+}
+
+window.submitPassword = async function() {
+  const pw = document.getElementById('passwordInput').value;
+  if (!pw) { showPasswordError('กรุณาใส่รหัสผ่านก่อนครับ'); return; }
+  const hashed = await hashPassword(pw, _pendingEmpId);
+
+  document.getElementById('passwordBox').style.display = 'none';
+  document.getElementById('spinner').style.display = 'block';
+  document.getElementById('statusTitle').textContent = 'กำลังตรวจสอบ...';
+  document.getElementById('statusSub').textContent = '';
+
+  callLiffApi('verifyTechPassword', { empId: _pendingEmpId, hashedPassword: hashed }).then(function(res) {
+    if (res.success) {
+      goToApp(_pendingEmpId, _pendingEmpName);
+    } else {
+      askPasswordThenGo(_pendingEmpId, _pendingEmpName);
+      showPasswordError(res.message || 'รหัสผ่านไม่ถูกต้อง');
+    }
+  }).catch(function() {
+    askPasswordThenGo(_pendingEmpId, _pendingEmpName);
+    showPasswordError('เชื่อมต่อไม่สำเร็จ ลองใหม่อีกครั้งครับ');
+  });
+};
+
+function showPasswordError(msg) {
+  document.getElementById('spinner').style.display = 'none';
+  document.getElementById('passwordBox').style.display = 'block';
+  const e = document.getElementById('passwordError');
+  e.style.display = 'block';
+  e.textContent = msg;
+}
+
 function goToApp(empId, empName) {
+  hideAllBoxes();
+  document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = 'สำเร็จ';
   document.getElementById('statusSub').textContent = 'กำลังเข้าสู่ระบบ...';
   window.location.href = GAS_URL + '?autoLogin=tech&empId=' + encodeURIComponent(empId) + '&empName=' + encodeURIComponent(empName);
 }
 
-// 🆕 flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE ที่นี่ทั้งหมด (นอก iframe ของ GAS)
-// แล้วส่ง empId/empName เข้า GAS ตรงๆ ทาง URL เพื่อไม่ต้องเรียก liff.init() ในหน้า GAS อีกเลย
+// 🆕 flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE แล้วตามด้วยรหัสผ่านเสมอ
 function startDefaultFlow() {
   showCard();
   liff.init({ liffId: LIFF_ID }).then(function() {
     if (!liff.isInClient()) {
-      window.location.href = GAS_URL; // เปิดผ่าน browser ปกติ ไม่ใช่แอพ LINE — ให้ล็อกอินเองแบบปกติ
+      window.location.href = GAS_URL; // เปิดผ่าน browser ปกติ — ให้ล็อกอินเองแบบปกติ
       return;
     }
     liff.getProfile().then(function(profile) {
@@ -113,7 +180,7 @@ function startDefaultFlow() {
       _lineDisplayName = profile.displayName;
       callLiffApi('findTechByLineUserId', { lineUserId: profile.userId }).then(function(res) {
         if (res.found) {
-          goToApp(res.empId, res.empName);
+          askPasswordThenGo(res.empId, res.empName);
         } else {
           showPicker();
         }
@@ -127,7 +194,7 @@ function startScan() {
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = 'กำลังเปิดกล้อง...';
   document.getElementById('statusSub').textContent = 'รอสักครู่';
-  document.getElementById('errorBox').style.display = 'none';
+  hideAllBoxes();
 
   liff.init({ liffId: LIFF_ID }).then(() => {
     if (!liff.isInClient()) {
