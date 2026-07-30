@@ -29,8 +29,8 @@
   <h2 id="statusTitle">กำลังเข้าสู่ระบบ...</h2>
   <p class="sub" id="statusSub">รอสักครู่</p>
 
-  <!-- ทางออกฉุกเฉิน — กดได้ตลอดเวลาไม่ว่าจะติดอยู่ขั้นตอนไหน (โหลดช้า/อยากสลับบัญชี) -->
-  <button type="button" class="link-btn" id="cancelSwitchBtn" onclick="cancelAndSwitchUser()">ยกเลิก / เปลี่ยนผู้ใช้งาน</button>
+  <!-- ทางออกฉุกเฉิน — โชว์เฉพาะตอนนับถอยหลัง auto-login เท่านั้น (หน้าอื่นมีทางออกของตัวเองอยู่แล้ว ไม่ต้องซ้ำ) -->
+  <button type="button" class="link-btn" id="cancelSwitchBtn" onclick="cancelAndSwitchUser()" style="display:none">ยกเลิก / เปลี่ยนผู้ใช้งาน</button>
 
   <div id="pickerBox" style="display:none; text-align:left;">
     <p class="sub" style="text-align:center; margin-bottom:4px;">กรุณาเลือกชื่อของท่าน</p>
@@ -70,6 +70,7 @@ function hideAllBoxes() {
 
 function showError(msg) {
   hideAllBoxes();
+  document.getElementById('cancelSwitchBtn').style.display = 'none';
   document.getElementById('spinner').style.display = 'none';
   document.getElementById('statusTitle').textContent = 'ไม่สำเร็จ';
   document.getElementById('statusSub').textContent = '';
@@ -89,7 +90,7 @@ function callLiffApi(action, params) {
   return fetch(url).then(r => r.json());
 }
 
-// 🆕 "จดจำการเข้าสู่ระบบ" — เก็บไว้ใน localStorage ของหน้านี้เอง (โดเมน GitHub Pages)
+// "จดจำการเข้าสู่ระบบ" — เก็บไว้ใน localStorage ของหน้านี้เอง (โดเมน GitHub Pages)
 function isAuthRemembered_(empId) {
   try { return localStorage.getItem('DF_SKIP_PW_' + empId) === '1'; } catch(e) { return false; }
 }
@@ -104,16 +105,18 @@ let _lineUserId = '';
 let _lineDisplayName = '';
 let _pendingEmpId = '';
 let _pendingEmpName = '';
-// 🆕 ธงบอกว่า "ผู้ใช้กดยกเลิกไปแล้ว" — กัน request ที่ค้างอยู่ตอบกลับมาทีหลังแล้วไปทับหน้าจอที่เปลี่ยนไปแล้ว
+// ธงบอกว่า "ผู้ใช้กดยกเลิกไปแล้ว" — กัน request ที่ค้างอยู่ตอบกลับมาทีหลังแล้วไปทับหน้าจอที่เปลี่ยนไปแล้ว
 let _cancelled = false;
-// 🆕 ตัวจับเวลา auto-login (ตอน "จดจำ" ไว้แล้ว) — ต้องเก็บไว้ให้ยกเลิกได้ทัน ถ้ากดยกเลิกก่อนหมดเวลา
+// ตัวจับเวลา auto-login (ตอน "จดจำ" ไว้แล้ว) — ต้องเก็บไว้ให้ยกเลิกได้ทัน ถ้ากดยกเลิกก่อนหมดเวลา
 let _autoConfirmTimer = null;
+let _autoConfirmInterval = null; // ตัวนับถอยหลังที่โชว์ให้เห็นบนจอ
 
-// ทางออกฉุกเฉิน: กดได้ทุกขั้นตอน — ถ้ารู้ตัวตน LINE แล้ว (โปรไฟล์โหลดเสร็จแล้ว) พาไปเลือกชื่อใหม่ได้เลย
+// ทางออกฉุกเฉิน: กดได้ตอนนับถอยหลัง auto-login เท่านั้น — ถ้ารู้ตัวตน LINE แล้ว (โปรไฟล์โหลดเสร็จแล้ว) พาไปเลือกชื่อใหม่ได้เลย
 // ถ้ายังไม่รู้ตัวตน (ยัง liff.init()/โหลดโปรไฟล์ไม่เสร็จ) ให้รีโหลดหน้าใหม่สะอาดๆ แทน
 window.cancelAndSwitchUser = function() {
-  _cancelled = true; // 🆕 ตั้งธงไว้ก่อน กัน callback เก่าที่ค้างอยู่มาทับหน้าจอทีหลัง
-  if (_autoConfirmTimer) { clearTimeout(_autoConfirmTimer); _autoConfirmTimer = null; } // 🆕 หยุด auto-login ที่กำลังนับถอยหลังอยู่ทันที
+  _cancelled = true; // ตั้งธงไว้ก่อน กัน callback เก่าที่ค้างอยู่มาทับหน้าจอทีหลัง
+  if (_autoConfirmTimer) { clearTimeout(_autoConfirmTimer); _autoConfirmTimer = null; } // หยุด auto-login ที่กำลังนับถอยหลังอยู่ทันที
+  if (_autoConfirmInterval) { clearInterval(_autoConfirmInterval); _autoConfirmInterval = null; } // หยุดตัวเลขนับถอยหลังด้วย
   if (_lineUserId) {
     showPicker();
   } else {
@@ -122,14 +125,15 @@ window.cancelAndSwitchUser = function() {
 };
 
 function showPicker() {
-  _cancelled = false; // 🆕 เข้าสู่ flow ใหม่ (เลือกชื่อเอง) แล้ว ปลดธงเพื่อให้ flow ถัดจากนี้ทำงานได้ปกติ
+  _cancelled = false; // เข้าสู่ flow ใหม่ (เลือกชื่อเอง) แล้ว ปลดธงเพื่อให้ flow ถัดจากนี้ทำงานได้ปกติ
+  document.getElementById('cancelSwitchBtn').style.display = 'none'; // อยู่หน้าเลือกชื่อแล้ว ไม่ต้องมีปุ่มยกเลิกซ้ำ
   hideAllBoxes();
   document.getElementById('spinner').style.display = 'none';
   document.getElementById('statusTitle').textContent = 'ยินดีต้อนรับ' + (_lineDisplayName ? ' ' + _lineDisplayName : '');
   document.getElementById('statusSub').textContent = 'เลือกครั้งเดียว ครั้งถัดไปจำให้อัตโนมัติ';
   document.getElementById('pickerBox').style.display = 'block';
 
-  // 🆕 โชว์ placeholder "กำลังโหลด..." ทันที ระหว่างรอ API ดึงรายชื่อ กันดูเหมือนค้าง/ว่างเปล่า
+  // โชว์ placeholder "กำลังโหลด..." ทันที ระหว่างรอ API ดึงรายชื่อ กันดูเหมือนค้าง/ว่างเปล่า
   const sel = document.getElementById('techSelect');
   sel.innerHTML = '<option value="">-- กำลังโหลดรายชื่อ... --</option>';
 
@@ -163,6 +167,7 @@ window.confirmBind = function() {
 // ขั้นยืนยันรหัสผ่าน — ชั้นความปลอดภัยเพิ่มจาก LINE binding (กันคนอื่นมือถือหลุด/แชร์กันแล้วเห็นงานคนอื่น)
 function askPasswordThenGo(empId, empName) {
   _pendingEmpId = empId; _pendingEmpName = empName;
+  document.getElementById('cancelSwitchBtn').style.display = 'none'; // หน้านี้มีลิงก์ "ไม่ใช่ฉัน?" ของตัวเองอยู่แล้ว ไม่ต้องซ้ำ
   hideAllBoxes();
   document.getElementById('spinner').style.display = 'none';
   document.getElementById('statusTitle').textContent = 'ยืนยันตัวตน';
@@ -209,43 +214,60 @@ function showPasswordError(msg) {
 
 function goToApp(empId, empName) {
   hideAllBoxes();
+  document.getElementById('cancelSwitchBtn').style.display = 'none';
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = 'สำเร็จ';
   document.getElementById('statusSub').textContent = 'กำลังเข้าสู่ระบบ...';
   window.location.href = GAS_URL + '?autoLogin=tech&empId=' + encodeURIComponent(empId) + '&empName=' + encodeURIComponent(empName);
 }
 
-// 🆕 ก่อน auto-login (ตอนเคยติ๊ก "จดจำ" ไว้) — โชว์ชื่อรอ 1.5 วิ ให้มีเวลากด "ยกเลิก/เปลี่ยนผู้ใช้งาน" ทัน
+// ก่อน auto-login (ตอนเคยติ๊ก "จดจำ" ไว้) — โชว์ชื่อ + นับถอยหลัง 3 วิ ให้มีเวลากด "ยกเลิก/เปลี่ยนผู้ใช้งาน" ทันจริงๆ
 // ถ้าไม่กดอะไรเลยจะเข้าระบบต่อให้อัตโนมัติเหมือนเดิม ไม่ต้องกดยืนยันซ้ำ
 function showAutoConfirm(empId, empName) {
   hideAllBoxes();
+  document.getElementById('cancelSwitchBtn').style.display = 'block'; // โชว์ปุ่มยกเลิกเฉพาะตอนนับถอยหลังนี้เท่านั้น
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = empName + ' (' + empId + ')';
-  document.getElementById('statusSub').textContent = 'กำลังเข้าสู่ระบบอัตโนมัติ...';
+
+  let secondsLeft = 3;
+  document.getElementById('statusSub').textContent = 'กำลังเข้าสู่ระบบอัตโนมัติใน ' + secondsLeft + ' วิ...';
+
   clearTimeout(_autoConfirmTimer);
+  clearInterval(_autoConfirmInterval);
+
+  _autoConfirmInterval = setInterval(function() {
+    secondsLeft--;
+    if (secondsLeft > 0) {
+      document.getElementById('statusSub').textContent = 'กำลังเข้าสู่ระบบอัตโนมัติใน ' + secondsLeft + ' วิ...';
+    } else {
+      clearInterval(_autoConfirmInterval);
+    }
+  }, 1000);
+
   _autoConfirmTimer = setTimeout(function() {
+    clearInterval(_autoConfirmInterval);
     if (!_cancelled) goToApp(empId, empName);
-  }, 1500);
-}  
-  
+  }, 3000);
+}
+
 // flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE แล้วถามรหัสผ่าน (ข้ามได้ถ้าเคยติ๊ก "จดจำ" ไว้)
 function startDefaultFlow() {
   showCard();
   liff.init({ liffId: LIFF_ID }).then(function() {
-    if (_cancelled) return; // 🆕 ยกเลิกไปแล้วระหว่างรอ liff.init() — ไม่ต้องทำต่อ
+    if (_cancelled) return; // ยกเลิกไปแล้วระหว่างรอ liff.init() — ไม่ต้องทำต่อ
     if (!liff.isInClient()) {
       window.location.href = GAS_URL; // เปิดผ่าน browser ปกติ — ให้ล็อกอินเองแบบปกติ
       return;
     }
     liff.getProfile().then(function(profile) {
-      if (_cancelled) return; // 🆕 ยกเลิกไปแล้วระหว่างรอโปรไฟล์ — ไม่ต้องทำต่อ
+      if (_cancelled) return; // ยกเลิกไปแล้วระหว่างรอโปรไฟล์ — ไม่ต้องทำต่อ
       _lineUserId = profile.userId;
       _lineDisplayName = profile.displayName;
       callLiffApi('findTechByLineUserId', { lineUserId: profile.userId }).then(function(res) {
-        if (_cancelled) return; // 🆕 จุดสำคัญที่สุด — กัน request ที่ค้างอยู่ตอนกดยกเลิกไปทับหน้าเลือกชื่อ/ตัดหน้าไปหน้ารหัสผ่าน
+        if (_cancelled) return; // จุดสำคัญที่สุด — กัน request ที่ค้างอยู่ตอนกดยกเลิกไปทับหน้าเลือกชื่อ/ตัดหน้าไปหน้ารหัสผ่าน
         if (res.found) {
           if (isAuthRemembered_(res.empId)) {
-            showAutoConfirm(res.empId, res.empName); // 🆕 แสดงชื่อ + รอสักครู่ให้กดยกเลิกทัน ก่อนเข้าระบบอัตโนมัติจริง
+            showAutoConfirm(res.empId, res.empName); // แสดงชื่อ + นับถอยหลังให้กดยกเลิกทัน ก่อนเข้าระบบอัตโนมัติจริง
           } else {
             askPasswordThenGo(res.empId, res.empName);
           }
