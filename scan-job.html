@@ -106,11 +106,14 @@ let _pendingEmpId = '';
 let _pendingEmpName = '';
 // 🆕 ธงบอกว่า "ผู้ใช้กดยกเลิกไปแล้ว" — กัน request ที่ค้างอยู่ตอบกลับมาทีหลังแล้วไปทับหน้าจอที่เปลี่ยนไปแล้ว
 let _cancelled = false;
+// 🆕 ตัวจับเวลา auto-login (ตอน "จดจำ" ไว้แล้ว) — ต้องเก็บไว้ให้ยกเลิกได้ทัน ถ้ากดยกเลิกก่อนหมดเวลา
+let _autoConfirmTimer = null;
 
 // ทางออกฉุกเฉิน: กดได้ทุกขั้นตอน — ถ้ารู้ตัวตน LINE แล้ว (โปรไฟล์โหลดเสร็จแล้ว) พาไปเลือกชื่อใหม่ได้เลย
 // ถ้ายังไม่รู้ตัวตน (ยัง liff.init()/โหลดโปรไฟล์ไม่เสร็จ) ให้รีโหลดหน้าใหม่สะอาดๆ แทน
 window.cancelAndSwitchUser = function() {
   _cancelled = true; // 🆕 ตั้งธงไว้ก่อน กัน callback เก่าที่ค้างอยู่มาทับหน้าจอทีหลัง
+  if (_autoConfirmTimer) { clearTimeout(_autoConfirmTimer); _autoConfirmTimer = null; } // 🆕 หยุด auto-login ที่กำลังนับถอยหลังอยู่ทันที
   if (_lineUserId) {
     showPicker();
   } else {
@@ -209,6 +212,19 @@ function goToApp(empId, empName) {
   window.location.href = GAS_URL + '?autoLogin=tech&empId=' + encodeURIComponent(empId) + '&empName=' + encodeURIComponent(empName);
 }
 
+// 🆕 ก่อน auto-login (ตอนเคยติ๊ก "จดจำ" ไว้) — โชว์ชื่อรอ 1.5 วิ ให้มีเวลากด "ยกเลิก/เปลี่ยนผู้ใช้งาน" ทัน
+// ถ้าไม่กดอะไรเลยจะเข้าระบบต่อให้อัตโนมัติเหมือนเดิม ไม่ต้องกดยืนยันซ้ำ
+function showAutoConfirm(empId, empName) {
+  hideAllBoxes();
+  document.getElementById('spinner').style.display = 'block';
+  document.getElementById('statusTitle').textContent = empName + ' (' + empId + ')';
+  document.getElementById('statusSub').textContent = 'กำลังเข้าสู่ระบบอัตโนมัติ...';
+  clearTimeout(_autoConfirmTimer);
+  _autoConfirmTimer = setTimeout(function() {
+    if (!_cancelled) goToApp(empId, empName);
+  }, 1500);
+}  
+  
 // flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE แล้วถามรหัสผ่าน (ข้ามได้ถ้าเคยติ๊ก "จดจำ" ไว้)
 function startDefaultFlow() {
   showCard();
@@ -226,7 +242,7 @@ function startDefaultFlow() {
         if (_cancelled) return; // 🆕 จุดสำคัญที่สุด — กัน request ที่ค้างอยู่ตอนกดยกเลิกไปทับหน้าเลือกชื่อ/ตัดหน้าไปหน้ารหัสผ่าน
         if (res.found) {
           if (isAuthRemembered_(res.empId)) {
-            goToApp(res.empId, res.empName);
+            showAutoConfirm(res.empId, res.empName); // 🆕 แสดงชื่อ + รอสักครู่ให้กดยกเลิกทัน ก่อนเข้าระบบอัตโนมัติจริง
           } else {
             askPasswordThenGo(res.empId, res.empName);
           }
