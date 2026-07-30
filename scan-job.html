@@ -29,7 +29,7 @@
   <h2 id="statusTitle">กำลังเข้าสู่ระบบ...</h2>
   <p class="sub" id="statusSub">รอสักครู่</p>
 
-  <!-- 🆕 ทางออกฉุกเฉิน — กดได้ตลอดเวลาไม่ว่าจะติดอยู่ขั้นตอนไหน (โหลดช้า/อยากสลับบัญชี) -->
+  <!-- ทางออกฉุกเฉิน — กดได้ตลอดเวลาไม่ว่าจะติดอยู่ขั้นตอนไหน (โหลดช้า/อยากสลับบัญชี) -->
   <button type="button" class="link-btn" id="cancelSwitchBtn" onclick="cancelAndSwitchUser()">ยกเลิก / เปลี่ยนผู้ใช้งาน</button>
 
   <div id="pickerBox" style="display:none; text-align:left;">
@@ -104,10 +104,13 @@ let _lineUserId = '';
 let _lineDisplayName = '';
 let _pendingEmpId = '';
 let _pendingEmpName = '';
+// 🆕 ธงบอกว่า "ผู้ใช้กดยกเลิกไปแล้ว" — กัน request ที่ค้างอยู่ตอบกลับมาทีหลังแล้วไปทับหน้าจอที่เปลี่ยนไปแล้ว
+let _cancelled = false;
 
-// 🆕 ทางออกฉุกเฉิน: กดได้ทุกขั้นตอน — ถ้ารู้ตัวตน LINE แล้ว (โปรไฟล์โหลดเสร็จแล้ว) พาไปเลือกชื่อใหม่ได้เลย
+// ทางออกฉุกเฉิน: กดได้ทุกขั้นตอน — ถ้ารู้ตัวตน LINE แล้ว (โปรไฟล์โหลดเสร็จแล้ว) พาไปเลือกชื่อใหม่ได้เลย
 // ถ้ายังไม่รู้ตัวตน (ยัง liff.init()/โหลดโปรไฟล์ไม่เสร็จ) ให้รีโหลดหน้าใหม่สะอาดๆ แทน
 window.cancelAndSwitchUser = function() {
+  _cancelled = true; // 🆕 ตั้งธงไว้ก่อน กัน callback เก่าที่ค้างอยู่มาทับหน้าจอทีหลัง
   if (_lineUserId) {
     showPicker();
   } else {
@@ -116,6 +119,7 @@ window.cancelAndSwitchUser = function() {
 };
 
 function showPicker() {
+  _cancelled = false; // 🆕 เข้าสู่ flow ใหม่ (เลือกชื่อเอง) แล้ว ปลดธงเพื่อให้ flow ถัดจากนี้ทำงานได้ปกติ
   hideAllBoxes();
   document.getElementById('spinner').style.display = 'none';
   document.getElementById('statusTitle').textContent = 'ยินดีต้อนรับ' + (_lineDisplayName ? ' ' + _lineDisplayName : '');
@@ -141,7 +145,6 @@ window.confirmBind = function() {
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('statusTitle').textContent = 'กำลังบันทึก...';
 
-  // 🆕 ผูกทับของเดิมได้เลย (bindTechLineUserId เช็ค lineUserId เดิมแล้วอัปเดตทับ ไม่ต้อง unbind ก่อน)
   callLiffApi('bindTechLineUserId', { lineUserId: _lineUserId, empId: empId, empName: empName }).then(function(res) {
     if (res.success) {
       askPasswordThenGo(res.empId, res.empName);
@@ -151,7 +154,7 @@ window.confirmBind = function() {
   }).catch(function() { showError('บันทึกไม่สำเร็จ ลองใหม่อีกครั้งครับ'); });
 };
 
-// 🆕 ขั้นยืนยันรหัสผ่าน — ชั้นความปลอดภัยเพิ่มจาก LINE binding (กันคนอื่นมือถือหลุด/แชร์กันแล้วเห็นงานคนอื่น)
+// ขั้นยืนยันรหัสผ่าน — ชั้นความปลอดภัยเพิ่มจาก LINE binding (กันคนอื่นมือถือหลุด/แชร์กันแล้วเห็นงานคนอื่น)
 function askPasswordThenGo(empId, empName) {
   _pendingEmpId = empId; _pendingEmpName = empName;
   hideAllBoxes();
@@ -206,18 +209,21 @@ function goToApp(empId, empName) {
   window.location.href = GAS_URL + '?autoLogin=tech&empId=' + encodeURIComponent(empId) + '&empName=' + encodeURIComponent(empName);
 }
 
-// 🆕 flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE แล้วถามรหัสผ่าน (ข้ามได้ถ้าเคยติ๊ก "จดจำ" ไว้)
+// flow เริ่มต้น (ปุ่ม "งานของฉัน") — เช็ค/ผูกบัญชี LINE แล้วถามรหัสผ่าน (ข้ามได้ถ้าเคยติ๊ก "จดจำ" ไว้)
 function startDefaultFlow() {
   showCard();
   liff.init({ liffId: LIFF_ID }).then(function() {
+    if (_cancelled) return; // 🆕 ยกเลิกไปแล้วระหว่างรอ liff.init() — ไม่ต้องทำต่อ
     if (!liff.isInClient()) {
       window.location.href = GAS_URL; // เปิดผ่าน browser ปกติ — ให้ล็อกอินเองแบบปกติ
       return;
     }
     liff.getProfile().then(function(profile) {
+      if (_cancelled) return; // 🆕 ยกเลิกไปแล้วระหว่างรอโปรไฟล์ — ไม่ต้องทำต่อ
       _lineUserId = profile.userId;
       _lineDisplayName = profile.displayName;
       callLiffApi('findTechByLineUserId', { lineUserId: profile.userId }).then(function(res) {
+        if (_cancelled) return; // 🆕 จุดสำคัญที่สุด — กัน request ที่ค้างอยู่ตอนกดยกเลิกไปทับหน้าเลือกชื่อ/ตัดหน้าไปหน้ารหัสผ่าน
         if (res.found) {
           if (isAuthRemembered_(res.empId)) {
             goToApp(res.empId, res.empName);
@@ -227,9 +233,9 @@ function startDefaultFlow() {
         } else {
           showPicker();
         }
-      }).catch(function() { showError('เชื่อมต่อระบบไม่สำเร็จ ลองใหม่อีกครั้งครับ'); });
-    }).catch(function() { showError('ดึงข้อมูลโปรไฟล์ LINE ไม่สำเร็จ'); });
-  }).catch(function() { showError('เชื่อมต่อ LINE ไม่สำเร็จ ลองเปิดใหม่อีกครั้งครับ'); });
+      }).catch(function() { if (!_cancelled) showError('เชื่อมต่อระบบไม่สำเร็จ ลองใหม่อีกครั้งครับ'); });
+    }).catch(function() { if (!_cancelled) showError('ดึงข้อมูลโปรไฟล์ LINE ไม่สำเร็จ'); });
+  }).catch(function() { if (!_cancelled) showError('เชื่อมต่อ LINE ไม่สำเร็จ ลองเปิดใหม่อีกครั้งครับ'); });
 }
 
 function startScan() {
