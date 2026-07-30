@@ -29,6 +29,9 @@
   <h2 id="statusTitle">กำลังเข้าสู่ระบบ...</h2>
   <p class="sub" id="statusSub">รอสักครู่</p>
 
+  <!-- 🆕 ทางออกฉุกเฉิน — กดได้ตลอดเวลาไม่ว่าจะติดอยู่ขั้นตอนไหน (โหลดช้า/อยากสลับบัญชี) -->
+  <button type="button" class="link-btn" id="cancelSwitchBtn" onclick="cancelAndSwitchUser()">ยกเลิก / เปลี่ยนผู้ใช้งาน</button>
+
   <div id="pickerBox" style="display:none; text-align:left;">
     <p class="sub" style="text-align:center; margin-bottom:4px;">กรุณาเลือกชื่อของท่าน</p>
     <select id="techSelect"></select>
@@ -87,7 +90,6 @@ function callLiffApi(action, params) {
 }
 
 // 🆕 "จดจำการเข้าสู่ระบบ" — เก็บไว้ใน localStorage ของหน้านี้เอง (โดเมน GitHub Pages)
-// สโคปตาม empId เผื่อมีคนอื่นมาเลือกชื่อใหม่บนเครื่องเดียวกันภายหลัง จะได้ไม่ข้ามรหัสผ่านให้คนอื่นผิดๆ
 function isAuthRemembered_(empId) {
   try { return localStorage.getItem('DF_SKIP_PW_' + empId) === '1'; } catch(e) { return false; }
 }
@@ -102,6 +104,16 @@ let _lineUserId = '';
 let _lineDisplayName = '';
 let _pendingEmpId = '';
 let _pendingEmpName = '';
+
+// 🆕 ทางออกฉุกเฉิน: กดได้ทุกขั้นตอน — ถ้ารู้ตัวตน LINE แล้ว (โปรไฟล์โหลดเสร็จแล้ว) พาไปเลือกชื่อใหม่ได้เลย
+// ถ้ายังไม่รู้ตัวตน (ยัง liff.init()/โหลดโปรไฟล์ไม่เสร็จ) ให้รีโหลดหน้าใหม่สะอาดๆ แทน
+window.cancelAndSwitchUser = function() {
+  if (_lineUserId) {
+    showPicker();
+  } else {
+    location.reload();
+  }
+};
 
 function showPicker() {
   hideAllBoxes();
@@ -166,7 +178,6 @@ window.submitPassword = async function() {
 
   callLiffApi('verifyTechPassword', { empId: _pendingEmpId, hashedPassword: hashed }).then(function(res) {
     if (res.success) {
-      // 🆕 ติ๊ก "จดจำ" ไว้ → บันทึกลง localStorage ครั้งถัดไปข้ามขั้นรหัสผ่านได้เลย
       if (remember) rememberAuth_(_pendingEmpId); else forgetAuth_(_pendingEmpId);
       goToApp(_pendingEmpId, _pendingEmpName);
     } else {
@@ -208,7 +219,6 @@ function startDefaultFlow() {
       _lineDisplayName = profile.displayName;
       callLiffApi('findTechByLineUserId', { lineUserId: profile.userId }).then(function(res) {
         if (res.found) {
-          // 🆕 เคยติ๊ก "จดจำ" ไว้แล้ว → ข้ามขั้นรหัสผ่านไปเข้าระบบเลย
           if (isAuthRemembered_(res.empId)) {
             goToApp(res.empId, res.empName);
           } else {
