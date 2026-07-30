@@ -129,8 +129,11 @@ function showPicker() {
   document.getElementById('statusSub').textContent = 'เลือกครั้งเดียว ครั้งถัดไปจำให้อัตโนมัติ';
   document.getElementById('pickerBox').style.display = 'block';
 
+  // 🆕 โชว์ placeholder "กำลังโหลด..." ทันที ระหว่างรอ API ดึงรายชื่อ กันดูเหมือนค้าง/ว่างเปล่า
+  const sel = document.getElementById('techSelect');
+  sel.innerHTML = '<option value="">-- กำลังโหลดรายชื่อ... --</option>';
+
   callLiffApi('listTechUsersForBinding', {}).then(function(res) {
-    const sel = document.getElementById('techSelect');
     sel.innerHTML = '<option value="">-- เลือกชื่อช่าง --</option>' +
       (res.techs || []).map(t => `<option value="${t.empId}">${t.empName} (${t.empId})</option>`).join('');
   }).catch(function() {
